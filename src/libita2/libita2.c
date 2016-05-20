@@ -290,7 +290,7 @@ int asc2ita(char *input, char *output)
   uint8_t msb;
 
   uint8_t shift_state = SHIFT_LTRS;
-
+ 
   // it is customary for an ITA2 output to begin with two LTRS bytes
   output[0] = SHIFT_LTRS;
   output[1] = SHIFT_LTRS;
@@ -309,16 +309,28 @@ int asc2ita(char *input, char *output)
     switch(msb) {
 
     case ITA2_BOTH: // no change in shift state for this char
+
+      output[pos++] = (char) lsb;
+      
       break;
 
     case ITA2_FIGS: // following char = FIGS
+
+      if(shift_state != SHIFT_FIGS) {
+	output[pos++] = SHIFT_FIGS;
+	shift_state = SHIFT_FIGS;
+      }
+
+      output[pos++] = (char) lsb;
+ 
+      break;
+
     case ITA2_LTRS: // following char = LTRS
       
-      if(msb != shift_state) {
-	output[pos] = (char) msb;
-	shift_state = msb;
-	pos++;
-      }
+      if(shift_state != SHIFT_LTRS) {
+	output[pos++] = SHIFT_LTRS;
+	shift_state = SHIFT_LTRS;
+      }      
 
       output[pos++] = (char) lsb;
       
