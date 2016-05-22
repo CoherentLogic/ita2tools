@@ -1,13 +1,14 @@
 /*
- * libita2.c
+ * ita2.c
  * 
- *  ITA2 library
+ *  ITA2 Tools
  *   Converts ASCII to ITA2 and vice-versa
  *
  *  Copyright (C) 2016 Coherent Logic Development LLC
  *
  */
 
+#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 
@@ -19,8 +20,8 @@
 #define ITA2_LTRS 0xFE
 #define ITA2_NONE 0xFF
 
-int ita2asc(char *, char*);
-int asc2ita(char *, char*);
+#define CONV_ASCTOITA 0
+#define CONV_ITATOASC 1
 
 /* BOTH SETS = 0xFC; FIGS = 0xFD; LTRS = 0xFE; NO EQUIVALENT = 0xFF */
 static const uint8_t ita2_ascii_ltrs[32] = {
@@ -241,105 +242,112 @@ static const uint16_t ascii_ita2[128] = {
   0xFFFF  // DEL
 };
 
-int ita2asc(char *input, char *output) 
+void ita2asc(char);
+void asc2ita(char);
+
+uint8_t shift_state;
+
+int main(int argc, char **argv) 
 {
-  int input_len;
+  void (*conv)(char);
   char c;
 
-  int pos = 0;
+  shift_state = SHIFT_LTRS;
 
-  uint8_t shift_state = SHIFT_LTRS;
-  uint8_t conv;
+  if(argc != 2) {
+    printf("usage:  ita2 [a|i]\n");
+    printf(" a = convert ASCII to ITA2\n");
+    printf(" i = convert ITA2 to ASCII\n");
+    return 1;
+  }
+  
+  switch(argv[1][0]) {
+  case 'a':
+    /* it is customary to begin an ITA2 output with two LTRS characters */
+    putchar(SHIFT_LTRS);
+    putchar(SHIFT_LTRS);
 
-  input_len = strlen(input);
-
-  for(int i = 0; i < input_len; i++) {
-    c = input[i] & 0x1F; // mask off top 3 most significant bits (we want pure ITA2)
-
-    switch(c) {
-    case SHIFT_FIGS:
-      shift_state = SHIFT_FIGS;
-      break;
-    case SHIFT_LTRS:
-      shift_state = SHIFT_LTRS;
-      break;
-    default:
-      if(shift_state == SHIFT_FIGS) {
-	conv = ita2_ascii_figs[c];
-      }
-      else {
-	conv = ita2_ascii_ltrs[c];
-      }
-
-      output[pos++] = (char) conv;
-    }
+    conv = &asc2ita;
+    break;
+  case 'i':
+    conv = &ita2asc;
+    break;
   }
 
-  return(input_len);
+  while((c = getchar()) != EOF) {
+    (*conv)(c);
+  }
+ 
 }
 
-int asc2ita(char *input, char *output)
+void ita2asc(char c) 
 {
-  int input_len;
-  char c;
+  uint8_t conv;
 
-  int pos = 2;
+  switch(c) {
+  case SHIFT_FIGS:
+    shift_state = SHIFT_FIGS;
+    break;
+  case SHIFT_LTRS:
+    shift_state = SHIFT_LTRS;
+    break;
+  default:
+    if(shift_state == SHIFT_FIGS) {
+      conv = ita2_ascii_figs[c];
+    }
+    else {
+      conv = ita2_ascii_ltrs[c];
+    }
+    
+    putchar((char) conv);
+  }
+}
 
+
+void asc2ita(char c)
+{
   uint16_t conv;
   uint8_t lsb;
   uint8_t msb;
 
-  uint8_t shift_state = SHIFT_LTRS;
- 
-  // it is customary for an ITA2 output to begin with two LTRS bytes
-  output[0] = SHIFT_LTRS;
-  output[1] = SHIFT_LTRS;
-
-  input_len = strlen(input);
-
-  for(int i = 0; i < input_len; i++) {
     
-    c = input[i] & 0x7F; // mask off most significant bit (we want pure ASCII)
-   
-    conv = ascii_ita2[c];
+  c &= 0x7F; // mask off most significant bit (we want pure ASCII)
 
-    lsb = (uint8_t) (conv & 0x00FF);
-    msb = (uint8_t) ((conv >> 8) & 0xFF00);
+  conv = ascii_ita2[c];
+  
+  lsb = (uint8_t) (conv & 0x00FF);
+  msb = (uint8_t) (conv >> 8) & 0xff;
 
-    switch(msb) {
+  switch(msb) {
+  case ITA2_BOTH: // no change in shift state for this char
+    
+    putchar((char) lsb);      
+    break;
 
-    case ITA2_BOTH: // no change in shift state for this char
+  case ITA2_FIGS: // following char = FIGS
 
-      output[pos++] = (char) lsb;
-      
-      break;
+    if(shift_state != SHIFT_FIGS) {
+      putchar(SHIFT_FIGS);
+      shift_state = SHIFT_FIGS;
+    }
 
-    case ITA2_FIGS: // following char = FIGS
-
-      if(shift_state != SHIFT_FIGS) {
-	output[pos++] = SHIFT_FIGS;
-	shift_state = SHIFT_FIGS;
-      }
-
-      output[pos++] = (char) lsb;
+    putchar((char) lsb);
  
-      break;
+    break;
 
-    case ITA2_LTRS: // following char = LTRS
+  case ITA2_LTRS: // following char = LTRS
       
-      if(shift_state != SHIFT_LTRS) {
-	output[pos++] = SHIFT_LTRS;
-	shift_state = SHIFT_LTRS;
-      }      
+    if(shift_state != SHIFT_LTRS) {
+      putchar(SHIFT_LTRS);
+      shift_state = SHIFT_LTRS;
+    }      
 
-      output[pos++] = (char) lsb;
+    putchar((char) lsb);
       
-      break;
+    break;
 
-    case ITA2_NONE: // this char cannot be represented in ITA2
-      break;
-    }    
-  }
+  case ITA2_NONE: // this char cannot be represented in ITA2
+    break;
+  }    
 
-  return(input_len);
 }
